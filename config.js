@@ -42,9 +42,19 @@ window.CQ_DEFAULTS = {
       "fixed": ""
     },
     {
+      "id": "requestedBy",
+      "label": "Requested By",
+      "column": "RequestedBy",
+      "type": "text",
+      "required": false,
+      "default": "emailSender",
+      "help": "Who sent the contract — filled in from the email; change it if needed",
+      "fixed": ""
+    },
+    {
       "id": "dateReceived",
       "label": "Date Received",
-      "column": "Date_x0020_Received",
+      "column": "DateReviewed",
       "type": "datetime",
       "required": true,
       "default": "today",
@@ -69,7 +79,7 @@ window.CQ_DEFAULTS = {
     {
       "id": "estimatedCompletion",
       "label": "Estimated Completion Date",
-      "column": "Estimated_x0020_Completion_x0020",
+      "column": "EstimatedCompletionDate",
       "type": "date",
       "required": true,
       "default": "byPriority",
@@ -78,8 +88,8 @@ window.CQ_DEFAULTS = {
     },
     {
       "id": "currentHandler",
-      "label": "Current Handler",
-      "column": "Current_x0020_Handler",
+      "label": "Assigned",
+      "column": "Assigned",
       "type": "choice",
       "required": true,
       "options": [
