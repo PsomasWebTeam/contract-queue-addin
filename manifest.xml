@@ -5,7 +5,7 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>f13b4dc5-1755-47f6-93c9-d75d75e5c2ff</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.6.0.0</Version>
   <ProviderName>Psomas</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Outlook Add In by Psomas"/>
