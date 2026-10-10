@@ -14,7 +14,7 @@
 (function () {
   "use strict";
   const D = window.CQ_DEFAULTS;
-  const VERSION = "1.0";
+  const VERSION = "1.6";
   const $ = (id) => document.getElementById(id);
   const state = {
     flowUrl: "", settings: null, questions: [], email: null, values: {}, touched: {},
@@ -110,12 +110,27 @@
     const cc = uniqueAddr([...email.to.map((p) => p.email), ...email.cc.map((p) => p.email), ...sup]).filter((a) => !to.includes(a) && a !== paul);
     return { to, cc };
   }
+  const GENERIC_ERRORS = ["An action failed", "ActionFailed", "The execution of template action"];
+  const HIDE_STEPS = new Set(["Try", "Switch_kind", "Switch_email_mode", "Condition_found", "Until_found"]);
+  const decodeJson = (f) => { try { return String(JSON.parse('"' + f + '"')); } catch (e) { return f; } };
   function shortError(raw) {
-    const s = (raw === null || raw === undefined) ? "" : (typeof raw === "string" ? raw : JSON.stringify(raw));
-    if (!s.trim()) return "The flow reported a failure.";
-    let m = /"odata\.error"[\s\S]{0,400}?"value"\s*:\s*"((?:[^"\\]|\\.)+)"/.exec(s) || /"message"\s*:\s*"((?:[^"\\]|\\.)+)"/.exec(s);
-    if (m) { try { return String(JSON.parse('"' + m[1] + '"')).slice(0, 400); } catch (e) { return m[1].slice(0, 400); } }
-    return s.slice(0, 400);
+    // mirrors outbox.short_error: the failing step's own message, SharePoint's wording when it has one
+    if (raw === null || raw === undefined) return "The flow reported a failure.";
+    if (Array.isArray(raw) && raw.length && raw.every((x) => typeof x === "string")) return raw.map((x) => x.trim()).filter(Boolean).join("; ").slice(0, 400) || "The flow reported a failure.";
+    const s = typeof raw === "string" ? raw.trim() : JSON.stringify(raw);
+    if (!s) return "The flow reported a failure.";
+    const sp = /"odata\.error"[\s\S]{0,400}?"value"\s*:\s*"((?:[^"\\]|\\.)+)"/.exec(s) || /"message"\s*:\s*\{[^{}]{0,80}?"value"\s*:\s*"((?:[^"\\]|\\.)+)"/.exec(s);
+    if (sp) return decodeJson(sp[1]).trim().slice(0, 400);
+    const hits = [...s.matchAll(/"message"\s*:\s*"((?:[^"\\]|\\.)+)"/g)];
+    if (!hits.length) return s.slice(0, 400);
+    const pick = hits.find((h) => !GENERIC_ERRORS.some((g) => decodeJson(h[1]).startsWith(g))) || hits[0];
+    let text = decodeJson(pick[1]).trim();
+    const names = [...s.matchAll(/"name"\s*:\s*"([A-Za-z0-9_]+)"/g)].filter((n) => n.index < pick.index);
+    if (names.length) {
+      const step = names[names.length - 1][1];
+      if (!HIDE_STEPS.has(step) && !text.toLowerCase().includes(step.replace(/_/g, " ").toLowerCase())) text = `${step.replace(/_/g, " ")}: ${text}`;
+    }
+    return text.slice(0, 400);
   }
 
   // ------------------------------------------------------------------ questions (questions.py)
