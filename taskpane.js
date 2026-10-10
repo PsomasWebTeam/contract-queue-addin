@@ -450,7 +450,7 @@
     $("res-list").textContent = `✓ Added to “${payload.listTitle}”` + (itemId ? ` (item ${itemId})` : "") + ".";
     const sent = res.emailSent || (message ? "flow" : "none");
     const emailErrors = Array.isArray(res.emailErrors) ? res.emailErrors.filter(Boolean).map(String) : [];
-    $("res-email").textContent = !message ? "No acknowledgment email was sent." : emailErrors.length ? `✗ The row is on the list, but Paul's email was NOT sent: ${emailErrors.join("; ")}`
+    $("res-email").textContent = !message ? "No acknowledgment email was sent." : (emailErrors.length && sent !== "reply" && sent !== "new") ? `✗ The row is on the list, but Paul's email was NOT sent: ${emailErrors.join("; ")}`
       : sent === "reply" ? `✓ Paul replied inside the conversation to ${message.to}` + (s.testMode ? " (TEST MODE — rerouted to you)" : "") + "."
       : sent === "new" ? `✓ Paul's mailbox sent a new email to ${message.to}` + (s.testMode ? " (TEST MODE — rerouted to you)" : "") + "." : `Paul's email: ${sent}.`;
     const openBtn = $("res-open"); if (itemId) { openBtn.href = `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(payload.listTitle)}/DispForm.aspx?ID=${itemId}`; show("res-open", true); } else show("res-open", false);
