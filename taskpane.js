@@ -124,7 +124,7 @@
     out.label = squash(out.label) || "Untitled"; out.id = out.id || out.label.replace(/\W+/g, "").toLowerCase();
     out.type = D.typeNames[out.type] ? out.type : "text"; out.column = out.column || out.label.replace(/[^A-Za-z0-9]/g, (c) => `_x${c.charCodeAt(0).toString(16).padStart(4, "0")}_`).slice(0, 32);
     out.required = !!out.required; out.default = D.defaultKinds[out.default] ? out.default : "blank"; out.fixed = out.fixed || ""; out.help = out.help || "";
-    if (CHOICE_TYPES.includes(out.type)) { const seen = new Set(); out.options = (out.options || []).map(squash).filter((o) => { const k = key(o); if (!k || seen.has(k)) return false; seen.add(k); return true; }); out.allowAdd = out.allowAdd !== false; }
+    if (CHOICE_TYPES.includes(out.type)) { const seen = new Set(); out.options = (out.options || []).map(squash).filter((o) => { const k = key(o); if (!k || seen.has(k)) return false; seen.add(k); return true; }); out.allowAdd = out.allowAdd !== false; if (out.store !== "text") delete out.store; } else { delete out.store; }
     return out;
   }
   const isEmpty = (v) => v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
@@ -157,7 +157,7 @@
   function toSharePoint(q, v) {
     if (isEmpty(v)) return null;
     switch (q.type) {
-      case "multichoice": return v.map(String);
+      case "multichoice": return q.store === "text" ? v.map(String).join("; ") : v.map(String);
       case "date": { const d = fromYmd(v); return d ? spDate(d) : null; }
       case "datetime": return v instanceof Date ? spDateTime(v) : null;
       case "number": return Number.isInteger(v) ? v : v;
@@ -202,9 +202,12 @@
       used.add(f.internal.toLowerCase());
       if (q.column !== f.internal) { notes.push(`'${q.label}': column name corrected to ${f.internal}.`); q.column = f.internal; }
       if (CHOICE_TYPES.includes(q.type) && CHOICE_TYPES.includes(f.ourType)) {
+        if (q.store) { delete q.store; notes.push(`'${q.label}': the list column is a Choice column now, so the choices are stored as choices again.`); }
         if (q.type === "choice" && f.ourType === "multichoice") { notes.push(`'${q.label}' now allows several choices, like the list column.`); q.type = "multichoice"; }
         else if (q.type === "multichoice" && f.ourType === "choice") notes.push(`'${q.label}' allows several choices here, but the list column allows only one — in SharePoint, edit the column and tick 'Allow multiple selections'.`);
         if (f.choices.length) { const merged = normalizeQ(Object.assign({}, q, { options: [...f.choices, ...(q.options || [])] })).options; if (JSON.stringify(merged) !== JSON.stringify(q.options)) { notes.push(`'${q.label}': options now match the list.`); q.options = merged; } }
+      } else if (CHOICE_TYPES.includes(q.type) && (f.ourType === "text" || f.ourType === "note")) {
+        if (q.store !== "text") { q.store = "text"; notes.push(`'${q.label}' is a plain text column on the list, so the chosen options are stored as text ('A; B' when several). For a filterable column, change it in SharePoint to a Choice column with 'Allow multiple selections', then check the columns again.`); }
       } else if (f.ourType !== q.type && !(q.type === "date" && f.ourType === "datetime")) notes.push(`'${q.label}' is a ${D.typeNames[f.ourType] || f.type} column on the list but a ${D.typeNames[q.type]} question here.`);
       out.push(q);
     }
