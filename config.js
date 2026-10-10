@@ -6,7 +6,6 @@ window.CQ_DEFAULTS = {
     "testRecipient": "matthew.pipes@psomas.com",
     "siteUrl": "https://psomas.sharepoint.com/sites/GeneralCounsel",
     "listTitle": "Contract Review Queue",
-    "testListTitle": "Contract Review Queue TEST",
     "queueLink": "https://psomas.sharepoint.com/:l:/s/GeneralCounsel/JACjMuLmW_AsTYxVe2wuWiZeARZwGF9MTYy4G8uITwwe8bA?e=HRHpFw",
     "paulEmail": "paul.atreides@psomas.com",
     "supervisors": [

@@ -236,7 +236,7 @@
     const s = state.settings; const user = (state.user.email || "user").split("@")[0].replace(/[^A-Za-z0-9.]+/g, "-");
     return { schema: "contract-queue/2", kind, id: `cq-${kind}-${stamp()}-${user}-${rand(4)}`, marker: "CQ" + rand(10), app: `Outlook Add In (add-in) ${VERSION}`,
       submittedBy: state.user.email, submittedByName: state.user.name, submittedAt: isoLocal(new Date()), testMode: !!s.testMode, siteUrl: s.siteUrl,
-      listTitle: s.testMode ? (s.testListTitle || s.listTitle) : s.listTitle };
+      listTitle: s.listTitle };
   }
 
   // ------------------------------------------------------------------ roaming settings
@@ -268,8 +268,8 @@
 
   function renderHeader() {
     const s = state.settings; const pill = $("testpill");
-    if (s && s.testMode) { pill.textContent = `TEST MODE — emails go to ${s.testRecipient}; rows go to “${s.testListTitle}”`; pill.classList.remove("hidden"); } else pill.classList.add("hidden");
-    $("nav-list").href = s ? `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(s.testMode ? s.testListTitle : s.listTitle)}/AllItems.aspx` : "#";
+    if (s && s.testMode) { pill.textContent = `TEST MODE — emails go to ${s.testRecipient}; rows go to the live list (delete test rows by hand)`; pill.classList.remove("hidden"); } else pill.classList.add("hidden");
+    $("nav-list").href = s ? `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(s.listTitle)}/AllItems.aspx` : "#";
   }
   function renderEmail() {
     const e = state.email;
@@ -283,7 +283,7 @@
   // --- the form
   function renderForm() {
     const host = $("form"); host.innerHTML = ""; state.controls = {};
-    $("list-pill").textContent = "→ " + (state.settings.testMode ? state.settings.testListTitle : state.settings.listTitle);
+    $("list-pill").textContent = "→ " + state.settings.listTitle;
     for (const q of state.questions) {
       const wrap = document.createElement("div"); wrap.className = "q";
       const lab = document.createElement("div"); lab.className = "qlabel"; lab.innerHTML = esc(q.label) + (q.required ? ' <span class="req">*</span>' : ""); wrap.appendChild(lab);
@@ -434,7 +434,9 @@
     const itemId = res.itemId ? parseInt(res.itemId, 10) : null;
     $("res-list").textContent = `✓ Added to “${payload.listTitle}”` + (itemId ? ` (item ${itemId})` : "") + ".";
     const sent = res.emailSent || (message ? "flow" : "none");
-    $("res-email").textContent = !message ? "No acknowledgment email was sent." : sent === "reply" ? `✓ Paul replied inside the conversation to ${message.to}` + (s.testMode ? " (TEST MODE — rerouted to you)" : "") + "."
+    const emailErrors = Array.isArray(res.emailErrors) ? res.emailErrors.filter(Boolean).map(String) : [];
+    $("res-email").textContent = !message ? "No acknowledgment email was sent." : emailErrors.length ? `✗ The row is on the list, but Paul's email was NOT sent: ${emailErrors.join("; ")}`
+      : sent === "reply" ? `✓ Paul replied inside the conversation to ${message.to}` + (s.testMode ? " (TEST MODE — rerouted to you)" : "") + "."
       : sent === "new" ? `✓ Paul's mailbox sent a new email to ${message.to}` + (s.testMode ? " (TEST MODE — rerouted to you)" : "") + "." : `Paul's email: ${sent}.`;
     const openBtn = $("res-open"); if (itemId) { openBtn.href = `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(payload.listTitle)}/DispForm.aspx?ID=${itemId}`; show("res-open", true); } else show("res-open", false);
     remember({ when: humanDateTime(new Date()), title: answers.Title || "", itemId, list: payload.listTitle, email: sent, to: message ? message.to : "" });
@@ -449,7 +451,7 @@
     const qs = (res.questions && (Array.isArray(res.questions) ? res.questions : res.questions.questions)) || D.questions;
     state.settings = merged; state.questions = qs.map(normalizeQ);
   }
-  function basePayloadLite(kind) { const s = state.settings || D.settings; return { schema: "contract-queue/2", kind, id: `cq-${kind}-${stamp()}-${rand(4)}`, submittedBy: state.user.email, submittedAt: isoLocal(new Date()), listTitle: s.testMode ? (s.testListTitle || s.listTitle) : s.listTitle }; }
+  function basePayloadLite(kind) { const s = state.settings || D.settings; return { schema: "contract-queue/2", kind, id: `cq-${kind}-${stamp()}-${rand(4)}`, submittedBy: state.user.email, submittedAt: isoLocal(new Date()), listTitle: s.listTitle }; }
   async function saveQuestions() { await callFlow(Object.assign(basePayloadLite("save-file"), { file: "questions.json", content: JSON.stringify({ version: 1, questions: state.questions }, null, 2) }), 40000); }
   async function addOption(q, value) {
     await fetchConfig();                                            // re-read before editing (the family rule)
