@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Outlook Add In by Psomas</title>
+  <link rel="stylesheet" href="taskpane.css">
+  <style> main { max-width: 760px; margin: 0 auto; padding-bottom: 30px; } code { background: #EEF2F4; padding: 1px 5px; border-radius: 4px; } footer { position: static; } </style>
+</head>
+<body>
+  <header class="band"><div class="wordmark">OUTLOOK ADD IN <span class="by">by Psomas</span></div></header>
+  <div class="accent"></div>
+  <main>
+    <section class="card">
+      <h2>What this is</h2>
+      <p>The web page behind the <b>Add to Contract Queue</b> button in Outlook for the Psomas Legal Department. With a contract email selected, the button opens a side panel, fills in the Contract Review Queue questions from the email, adds the row to the SharePoint list through a Power Automate flow, and has Paul Atreides acknowledge the email with the estimated completion date.</p>
+      <p>This site holds no data and no credentials. Everything it does runs through Microsoft 365 under the signed-in user's permissions; the flow's address is entered once by each user and kept in their Outlook settings.</p>
+    </section>
+    <section class="card">
+      <h2>For IT: installing the button</h2>
+      <p>The add-in is installed from the Microsoft 365 admin center, with no hosting, registration or build on your side:</p>
+      <ol>
+        <li>Admin center → <b>Settings → Integrated apps → Upload custom apps</b>.</li>
+        <li>Choose <b>Office Add-in</b>, then <b>Provide link to manifest file</b> and paste:<br><code>https://psomaswebteam.github.io/contract-queue-addin/manifest.xml</code></li>
+        <li>Assign it to <b>Matthew Pipes</b> and <b>Chad Wilson</b> (or the Legal group), then <b>Deploy</b>.</li>
+      </ol>
+      <p>Permissions requested: <b>ReadItem</b> only (the add-in reads the selected email; it cannot read the mailbox or send on its own). It appears in classic Outlook, new Outlook and Outlook on the web within a few hours of deployment.</p>
+      <p><a class="linkbtn" href="manifest.xml" download>Download the manifest</a></p>
+    </section>
+    <section class="card">
+      <h2>Files</h2>
+      <ul>
+        <li><code>manifest.xml</code> — the add-in definition Outlook reads</li>
+        <li><code>taskpane.html</code>, <code>taskpane.js</code>, <code>taskpane.css</code> — the side panel</li>
+        <li><code>config.js</code> — the default questions and Paul's signature, generated from the desktop app's source</li>
+      </ul>
+      <p class="muted small">Source: github.com/PsomasWebTeam/Outlook-Add-In (private). Maintained by Legal Operations.</p>
+    </section>
+  </main>
+  <footer>Psomas — Legal Operations</footer>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contract Review Queue</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="taskpane.css">
+</head>
+<body>
+  <header class="band">
+    <div class="wordmark">OUTLOOK ADD IN <span class="by">by Psomas</span></div>
+    <div id="testpill" class="pill test hidden"></div>
+  </header>
+  <div class="accent"></div>
+
+  <main>
+    <div id="status" class="status hidden"></div>
+
+    <!-- first run: where is the flow? -->
+    <section id="sec-setup" class="card hidden">
+      <h2>One-time setup</h2>
+      <p>Paste the web address of the <b>Contract Queue Intake</b> flow (Matt has it: open the flow in Power Automate, click the first step, copy the "HTTP URL").</p>
+      <input id="setup-url" type="url" placeholder="https://prod-…logic.azure.com/workflows/…">
+      <div class="row">
+        <button id="setup-save" class="primary">Save and connect</button>
+      </div>
+      <p id="setup-msg" class="muted"></p>
+    </section>
+
+    <!-- the email -->
+    <section id="sec-email" class="card hidden">
+      <div class="cardhead"><h2>The contract email</h2><span id="email-pill" class="pill neutral hidden"></span></div>
+      <div id="email-summary" class="summary"></div>
+      <div id="email-detail" class="muted small"></div>
+    </section>
+
+    <!-- the form -->
+    <section id="sec-form" class="card hidden">
+      <div class="cardhead"><h2>Contract Review Queue entry</h2><span id="list-pill" class="pill info"></span></div>
+      <div id="form"></div>
+      <div class="row">
+        <button id="btn-review" class="primary">Review Paul's email ›</button>
+        <button id="btn-list-only" class="secondary">Add to the list only</button>
+      </div>
+      <div id="form-problem" class="problem"></div>
+    </section>
+
+    <!-- Paul's email -->
+    <section id="sec-preview" class="card hidden">
+      <div class="cardhead"><h2>Paul's acknowledgment</h2><span id="preview-pill" class="pill test hidden"></span></div>
+      <p class="muted small">Check it, change it if you like, then send.</p>
+      <label class="field"><span>From</span><div id="pv-from" class="readonly"></div></label>
+      <label class="field"><span>To</span><input id="pv-to" type="text"></label>
+      <label class="field"><span>CC</span><input id="pv-cc" type="text"></label>
+      <label class="field"><span>Subject</span><input id="pv-subject" type="text"></label>
+      <textarea id="pv-body" rows="10"></textarea>
+      <p class="muted small">Blank line = new paragraph · **bold** · [link text]&lt;https://…&gt; · Paul's signature is added automatically.</p>
+      <div class="row">
+        <button id="btn-send" class="primary">Send Paul's email and add to the list</button>
+      </div>
+      <div class="row">
+        <button id="btn-send-list-only" class="secondary">Add to the list only</button>
+        <button id="btn-back" class="secondary">‹ Back</button>
+      </div>
+      <div id="preview-problem" class="problem"></div>
+    </section>
+
+    <!-- the result -->
+    <section id="sec-result" class="card hidden">
+      <h2>Done</h2>
+      <div id="res-list" class="summary"></div>
+      <div id="res-email" class="summary"></div>
+      <div class="row">
+        <button id="btn-again" class="primary">Start another entry</button>
+        <a id="res-open" class="secondary linkbtn hidden" target="_blank" rel="noopener">Open the row</a>
+      </div>
+    </section>
+
+    <!-- settings -->
+    <section id="sec-settings" class="card hidden">
+      <h2>Settings</h2>
+      <label class="field"><span>Flow address</span><input id="set-url" type="url"></label>
+      <div class="row">
+        <button id="set-save" class="secondary">Save</button>
+        <button id="set-test" class="secondary">Test the connection</button>
+        <button id="set-schema" class="secondary">Check list columns</button>
+      </div>
+      <p id="set-msg" class="muted small"></p>
+      <h3>Recent entries from this add-in</h3>
+      <div id="recent" class="muted small"></div>
+      <p class="muted small" id="about"></p>
+    </section>
+  </main>
+
+  <footer>
+    <a id="nav-main" href="#">Entry</a> · <a id="nav-settings" href="#">Settings</a> · <a id="nav-list" href="#" target="_blank" rel="noopener">Open the queue</a>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="taskpane.js"></script>
+</body>
+</html>
