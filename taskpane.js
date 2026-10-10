@@ -505,6 +505,10 @@
     $("nav-settings").addEventListener("click", (e) => { e.preventDefault(); page("settings"); });
   }
 
+  // a few pure helpers exposed for checking from a browser console (no data, no secrets)
+  window.__cq = { completionDate, businessDaysFor, isBusinessDay, spDate, spDateTime, humanDate, cleanSubject, replySubject,
+    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, version: VERSION };
+
   Office.onReady(async () => {
     wire();
     try { const p = Office.context.mailbox.userProfile; state.user = { name: p.displayName || "", email: (p.emailAddress || "").toLowerCase() }; } catch (e) { state.user = { name: "", email: "" }; }
