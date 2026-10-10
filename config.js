@@ -57,7 +57,7 @@ window.CQ_DEFAULTS = {
       "column": "DateReviewed",
       "type": "datetime",
       "required": true,
-      "default": "today",
+      "default": "emailReceived",
       "fixed": "",
       "help": ""
     },
