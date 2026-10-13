@@ -14,7 +14,7 @@
 (function () {
   "use strict";
   const D = window.CQ_DEFAULTS;
-  const VERSION = "1.6";
+  const VERSION = "1.7";
   const $ = (id) => document.getElementById(id);
   const state = {
     flowUrl: "", settings: null, questions: [], email: null, values: {}, touched: {},
@@ -297,7 +297,7 @@
 
   // --- the form
   function renderForm() {
-    const host = $("form"); host.innerHTML = ""; state.controls = {};
+    const host = $("form"); host.innerHTML = ""; state.controls = {}; state.dirty = false;
     $("list-pill").textContent = "→ " + state.settings.listTitle;
     for (const q of state.questions) {
       const wrap = document.createElement("div"); wrap.className = "q";
@@ -448,23 +448,52 @@
     state.busy = false; setStatus("", "");
     const itemId = res.itemId ? parseInt(res.itemId, 10) : null;
     $("res-list").textContent = `✓ Added to “${payload.listTitle}”` + (itemId ? ` (item ${itemId})` : "") + ".";
-    const sent = res.emailSent || (message ? "flow" : "none");
+    const sent = res.emailSent || (message ? "pending" : "none");
     const emailErrors = Array.isArray(res.emailErrors) ? res.emailErrors.filter(Boolean).map(String) : [];
-    $("res-email").textContent = !message ? "No acknowledgment email was sent." : (emailErrors.length && sent !== "reply" && sent !== "new") ? `✗ The row is on the list, but Paul's email was NOT sent: ${emailErrors.join("; ")}`
-      : sent === "reply" ? `✓ Paul replied inside the conversation to ${message.to}` + (s.testMode ? " (TEST MODE — rerouted to you)" : "") + "."
-      : sent === "new" ? `✓ Paul's mailbox sent a new email to ${message.to}` + (s.testMode ? " (TEST MODE — rerouted to you)" : "") + "." : `Paul's email: ${sent}.`;
+    $("res-email").textContent = emailLine(message, sent, emailErrors, s);
     const openBtn = $("res-open"); if (itemId) { openBtn.href = `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(payload.listTitle)}/DispForm.aspx?ID=${itemId}`; show("res-open", true); } else show("res-open", false);
     remember({ when: humanDateTime(new Date()), title: answers.Title || "", itemId, list: payload.listTitle, email: sent, to: message ? message.to : "" });
+    if (message && sent === "pending") pollStatus(payload.id, message, itemId, s);
     page("result");
     ["btn-send", "btn-send-list-only", "btn-review", "btn-list-only"].forEach((id) => { $(id).disabled = false; }); $("btn-send").textContent = "Send Paul's email and add to the list";
   }
 
+  function emailLine(message, sent, errors, s) {
+    if (!message) return "No acknowledgment email was sent.";
+    const test = s.testMode ? " (TEST MODE — rerouted to you)" : "";
+    if (sent === "pending") return `… Paul's reply to ${message.to} is on its way — usually under a minute. This line updates by itself.`;
+    if (errors.length && sent !== "reply" && sent !== "new") return `✗ The row is on the list, but Paul's email was NOT sent: ${errors.join("; ")}`;
+    if (sent === "reply") return `✓ Paul replied inside the conversation to ${message.to}${test}.`;
+    if (sent === "new") return `✓ Paul's mailbox sent a new email to ${message.to}${test}.`;
+    return `Paul's email: ${sent}.`;
+  }
+  // the flow answers before Paul's email goes; it leaves a receipt when it has — ask for it
+  async function pollStatus(lookup, message, itemId, s) {
+    const until = Date.now() + 150000; let delay = 4000;
+    while (Date.now() < until) {
+      await new Promise((r) => setTimeout(r, delay)); delay = Math.min(delay + 1000, 8000);
+      let data; try { data = await callFlow(Object.assign(basePayloadLite("status"), { lookup }), 20000); } catch (e) { continue; }
+      if (data.status !== "done" || !data.receipt) continue;
+      const rc = data.receipt; const sent = rc.emailSent || "none"; const errors = Array.isArray(rc.emailErrors) ? rc.emailErrors.filter(Boolean).map(String) : [];
+      $("res-email").textContent = emailLine(message, sent, errors, s);
+      const list = (state.recent || []).map((r) => (itemId && r.itemId === itemId ? Object.assign({}, r, { email: sent }) : r)); state.recent = list; roam("recent", JSON.stringify(list));
+      return;
+    }
+    if ($("res-email").textContent.startsWith("…")) $("res-email").textContent = "Paul's reply has not been confirmed yet — check the Sent Items of Paul's mailbox or the flow's run history.";
+  }
+
   // --- shared edits through the flow
-  async function fetchConfig() {
-    const res = await callFlow(basePayloadLite("config"), 40000);
+  function applyConfig(res) {
     const merged = Object.assign({}, D.settings, res.settings || {}); merged.emailTemplate = Object.assign({}, D.settings.emailTemplate, (res.settings && res.settings.emailTemplate) || {});
     const qs = (res.questions && (Array.isArray(res.questions) ? res.questions : res.questions.questions)) || D.questions;
     state.settings = merged; state.questions = qs.map(normalizeQ);
+    return JSON.stringify({ s: state.settings, q: state.questions });
+  }
+  async function fetchConfig() {
+    const res = await callFlow(basePayloadLite("config"), 40000);
+    const sig = applyConfig(res);
+    roam("configCache", JSON.stringify({ settings: res.settings || {}, questions: res.questions || [] }));
+    return sig;
   }
   function basePayloadLite(kind) { const s = state.settings || D.settings; return { schema: "contract-queue/2", kind, id: `cq-${kind}-${stamp()}-${rand(4)}`, submittedBy: state.user.email, submittedAt: isoLocal(new Date()), listTitle: s.listTitle }; }
   async function saveQuestions() { await callFlow(Object.assign(basePayloadLite("save-file"), { file: "questions.json", content: JSON.stringify({ version: 1, questions: state.questions }, null, 2) }), 40000); }
@@ -517,6 +546,7 @@
     $("btn-send").addEventListener("click", () => submit(true));
     $("btn-send-list-only").addEventListener("click", () => submit(false));
     $("btn-again").addEventListener("click", () => { state.plan = null; state.email = readItem(); renderEmail(); renderForm(); page("main"); });
+    $("form").addEventListener("input", () => { state.dirty = true; });
     $("setup-save").addEventListener("click", async () => { if (await connect($("setup-url").value, true)) { page("main"); } });
     $("set-save").addEventListener("click", async () => { if (await connect($("set-url").value, false)) setStatus("Flow address saved.", "ok"); });
     $("set-test").addEventListener("click", async () => { $("set-msg").textContent = "Testing…"; try { await fetchConfig(); $("set-msg").textContent = `The flow answered — ${state.questions.length} questions, test mode ${state.settings.testMode ? "ON" : "off"}.`; renderHeader(); renderForm(); } catch (e) { $("set-msg").textContent = e.message; } });
@@ -535,8 +565,17 @@
     try { state.recent = JSON.parse(roam("recent") || "[]"); } catch (e) { state.recent = []; }
     state.flowUrl = roam("flowUrl") || "";
     state.settings = Object.assign({}, D.settings); state.questions = D.questions.map(normalizeQ);
+    // the settings and questions seen last time live in Outlook's own storage: the form shows at
+    // once and the flow is asked again in the background (the form is redrawn only if something
+    // changed and nothing has been typed yet)
+    let cachedSig = null; try { const c = roam("configCache"); if (c) cachedSig = applyConfig(JSON.parse(c)); } catch (e) { cachedSig = null; }
     state.email = readItem(); renderHeader(); renderEmail();
     if (!state.flowUrl) { page("setup"); return; }
+    if (cachedSig) {
+      renderForm(); page("main");
+      fetchConfig().then((sig) => { if (sig !== cachedSig && !state.dirty) { renderHeader(); renderForm(); } }).catch(() => {});
+      return;
+    }
     setStatus("Connecting to the flow…", "busy");
     try { await fetchConfig(); setStatus("", ""); } catch (e) { setStatus(e.message + " Using the built-in defaults until the flow answers.", "warn"); }
     renderHeader(); renderForm(); page("main");
