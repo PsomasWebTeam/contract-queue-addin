@@ -14,7 +14,7 @@
 (function () {
   "use strict";
   const D = window.CQ_DEFAULTS;
-  const VERSION = "1.7";
+  const VERSION = "1.8";
   const $ = (id) => document.getElementById(id);
   const state = {
     flowUrl: "", settings: null, questions: [], email: null, values: {}, touched: {},
@@ -285,6 +285,7 @@
     const s = state.settings; const pill = $("testpill");
     if (s && s.testMode) { pill.textContent = `TEST MODE — emails go to ${s.testRecipient}; rows go to the live list (delete test rows by hand)`; pill.classList.remove("hidden"); } else pill.classList.add("hidden");
     $("nav-list").href = s ? `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(s.listTitle)}/AllItems.aspx` : "#";
+    renderTestMode(false);
   }
   function renderEmail() {
     const e = state.email;
@@ -414,11 +415,11 @@
 
   function review(listOnly) {
     const got = collectValues(); if (got.error) { $("form-problem").textContent = got.error; return; }
-    $("form-problem").textContent = ""; state.plan = buildPlan(got.values);
+    $("form-problem").textContent = ""; state.plan = buildPlan(got.values); state.plan.testMode = !!state.settings.testMode;
     if (listOnly) { submit(false); return; }
     $("pv-from").textContent = state.plan.from; $("pv-to").value = state.plan.to.join("; "); $("pv-cc").value = state.plan.cc.join("; ");
     $("pv-subject").value = state.plan.subject; $("pv-body").value = state.plan.text; $("preview-problem").textContent = "";
-    const s = state.settings; if (s.testMode) { $("preview-pill").textContent = `TEST MODE: this will go to ${s.testRecipient} only`; show("preview-pill", true); } else show("preview-pill", false);
+    showPreviewPill();
     page("preview");
   }
 
@@ -430,6 +431,13 @@
       const problems = []; if (!to.length) problems.push("Add at least one address in the To line, or use 'Add to the list only'."); if (badAddrs([...to, ...cc]).length) problems.push("Use plain email addresses, separated by semicolons.");
       if (!subject) problems.push("The subject is empty."); if (!text.trim()) problems.push("The email text is empty.");
       if (problems.length) { $("preview-problem").textContent = problems.join(" "); return; }
+      if (!!state.settings.testMode !== !!state.plan.testMode) {
+        state.plan.testMode = !!state.settings.testMode; showPreviewPill();
+        $("preview-problem").textContent = state.settings.testMode
+          ? `Test mode was switched ON since this preview opened, so the email will go only to ${state.settings.testRecipient}. Press Send again to send it.`
+          : "Test mode was switched OFF since this preview opened, so the email will go to the real recipients above. Press Send again to send it.";
+        return;
+      }
       message = finalize(state.plan, text, to, cc, subject);
     }
     state.busy = true; ["btn-send", "btn-send-list-only", "btn-review", "btn-list-only"].forEach((id) => { $(id).disabled = true; });
@@ -483,18 +491,22 @@
   }
 
   // --- shared edits through the flow
-  function applyConfig(res) {
-    const merged = Object.assign({}, D.settings, res.settings || {}); merged.emailTemplate = Object.assign({}, D.settings.emailTemplate, (res.settings && res.settings.emailTemplate) || {});
-    const qs = (res.questions && (Array.isArray(res.questions) ? res.questions : res.questions.questions)) || D.questions;
-    state.settings = merged; state.questions = qs.map(normalizeQ);
+  function mergeSettings(raw) {
+    const merged = Object.assign({}, D.settings, raw || {}); merged.emailTemplate = Object.assign({}, D.settings.emailTemplate, (raw && raw.emailTemplate) || {});
+    return merged;
+  }
+  // keepQuestions: a form that is being filled in keeps the questions it was drawn from
+  function applyConfig(res, keepQuestions) {
+    state.settings = mergeSettings(res.settings);
+    if (!keepQuestions) { const qs = (res.questions && (Array.isArray(res.questions) ? res.questions : res.questions.questions)) || D.questions; state.questions = qs.map(normalizeQ); }
     return JSON.stringify({ s: state.settings, q: state.questions });
   }
-  async function fetchConfig() {
+  async function loadConfig() {
     const res = await callFlow(basePayloadLite("config"), 40000);
-    const sig = applyConfig(res);
     roam("configCache", JSON.stringify({ settings: res.settings || {}, questions: res.questions || [] }));
-    return sig;
+    return res;
   }
+  async function fetchConfig() { return applyConfig(await loadConfig(), false); }
   function basePayloadLite(kind) { const s = state.settings || D.settings; return { schema: "contract-queue/2", kind, id: `cq-${kind}-${stamp()}-${rand(4)}`, submittedBy: state.user.email, submittedAt: isoLocal(new Date()), listTitle: s.listTitle }; }
   async function saveQuestions() { await callFlow(Object.assign(basePayloadLite("save-file"), { file: "questions.json", content: JSON.stringify({ version: 1, questions: state.questions }, null, 2) }), 40000); }
   async function addOption(q, value) {
@@ -521,9 +533,65 @@
     } catch (e) { setStatus(e.message, "err"); }
   }
 
+  // --- test mode: the one shared switch (the desktop app's Settings holds the same one)
+  function showPreviewPill() {
+    const s = state.settings; if (s.testMode) { $("preview-pill").textContent = `TEST MODE: this will go to ${s.testRecipient} only`; show("preview-pill", true); } else show("preview-pill", false);
+  }
+  function renderTestMode(hideConfirm) {
+    const s = state.settings || {}, on = !!s.testMode;
+    $("tm-pill").textContent = on ? "ON" : "OFF"; $("tm-pill").className = "pill " + (on ? "test" : "neutral");
+    $("tm-text").textContent = on
+      ? `Paul's emails go only to ${s.testRecipient || "the test address"}, with a [TEST] banner naming the real recipients. Rows still go to the live list.`
+      : "Paul's emails go to the real requesters.";
+    $("tm-toggle").textContent = on ? "Turn test mode off" : "Turn test mode on";
+    $("tm-toggle").disabled = !!state.tmBusy;
+    if (hideConfirm) show("tm-confirm", false);
+  }
+  function askTestMode() {
+    if (!state.flowUrl) { $("tm-msg").textContent = "Save the flow address first."; return; }
+    const s = state.settings || {}, on = !s.testMode; state.tmTarget = on;
+    $("tm-question").textContent = on
+      ? `Turn test mode ON for everyone? From the next entry, Paul's emails go only to ${s.testRecipient || "the test address"}, Chad's entries included, until it is switched off.`
+      : "Turn test mode OFF for everyone? From the next entry, Paul's emails go to the real requesters and everyone on the original email.";
+    $("tm-yes").textContent = on ? "Yes, turn it on" : "Yes, turn it off";
+    $("tm-msg").textContent = ""; show("tm-confirm", true);
+  }
+  // pure: what to write, given the flow's fresh answer. Re-read before editing, change only the
+  // switch, never overwrite a settings file that could not be read (the family rule).
+  function planTestModeSwitch(res, on) {
+    const raw = res && res.settings;
+    const readable = !!raw && typeof raw === "object" && !Array.isArray(raw) && !("$content" in raw) && ("listTitle" in raw || "testMode" in raw || "paulEmail" in raw);
+    if (!readable) return { error: "The shared settings file couldn't be read, so nothing was changed. Check it from the desktop app's Settings." };
+    if (!!raw.testMode === !!on) return { already: true, settings: raw };
+    const next = JSON.parse(JSON.stringify(raw)); next.testMode = !!on;
+    return { settings: next, content: JSON.stringify(next, null, 2) };
+  }
+  async function switchTestMode() {
+    if (state.tmBusy) return;
+    const on = !!state.tmTarget; state.tmBusy = true;
+    ["tm-yes", "tm-no", "tm-toggle"].forEach((id) => { $(id).disabled = true; });
+    $("tm-msg").textContent = on ? "Turning test mode on…" : "Turning test mode off…";
+    try {
+      const fresh = await callFlow(basePayloadLite("config"), 40000);
+      const p = planTestModeSwitch(fresh, on);
+      if (p.error) throw new Error(p.error);
+      if (!p.already) await callFlow(Object.assign(basePayloadLite("save-file"), { file: "settings.json", content: p.content }), 40000);
+      state.settings = mergeSettings(p.settings);                       // the form keeps its questions
+      roam("configCache", JSON.stringify({ settings: p.settings, questions: fresh.questions || [] }));
+      state.plan = null;                                                // a preview built before the switch is built again
+      $("tm-msg").textContent = p.already
+        ? `Test mode was already ${on ? "ON" : "OFF"}: it was switched from the desktop app or by Chad. Nothing changed.`
+        : on ? `Test mode is ON for everyone. Paul's emails now go only to ${state.settings.testRecipient}.`
+          : "Test mode is OFF for everyone. Paul's emails now go to the real requesters.";
+      renderHeader();
+    } catch (e) { $("tm-msg").textContent = e.message; }
+    finally { state.tmBusy = false; ["tm-yes", "tm-no"].forEach((id) => { $(id).disabled = false; }); renderTestMode(true); }
+  }
+
   // --- settings & recent
   function remember(entry) { const list = [entry, ...(state.recent || [])].slice(0, 15); state.recent = list; roam("recent", JSON.stringify(list)); }
   function renderSettings() {
+    renderTestMode(true);
     $("set-url").value = state.flowUrl || "";
     $("about").textContent = `Outlook Add In (add-in) ${VERSION} · signed in as ${state.user.email}`;
     const host = $("recent"); host.innerHTML = ""; if (!state.recent.length) host.textContent = "Nothing yet.";
@@ -551,13 +619,16 @@
     $("set-save").addEventListener("click", async () => { if (await connect($("set-url").value, false)) setStatus("Flow address saved.", "ok"); });
     $("set-test").addEventListener("click", async () => { $("set-msg").textContent = "Testing…"; try { await fetchConfig(); $("set-msg").textContent = `The flow answered — ${state.questions.length} questions, test mode ${state.settings.testMode ? "ON" : "off"}.`; renderHeader(); renderForm(); } catch (e) { $("set-msg").textContent = e.message; } });
     $("set-schema").addEventListener("click", checkColumns);
+    $("tm-toggle").addEventListener("click", askTestMode);
+    $("tm-yes").addEventListener("click", switchTestMode);
+    $("tm-no").addEventListener("click", () => { show("tm-confirm", false); $("tm-msg").textContent = ""; });
     $("nav-main").addEventListener("click", (e) => { e.preventDefault(); page(state.flowUrl ? "main" : "setup"); });
     $("nav-settings").addEventListener("click", (e) => { e.preventDefault(); page("settings"); });
   }
 
   // a few pure helpers exposed for checking from a browser console (no data, no secrets)
   window.__cq = { completionDate, businessDaysFor, isBusinessDay, spDate, spDateTime, humanDate, cleanSubject, replySubject,
-    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, version: VERSION };
+    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, planTestModeSwitch, version: VERSION };
 
   Office.onReady(async () => {
     wire();
@@ -573,7 +644,8 @@
     if (!state.flowUrl) { page("setup"); return; }
     if (cachedSig) {
       renderForm(); page("main");
-      fetchConfig().then((sig) => { if (sig !== cachedSig && !state.dirty) { renderHeader(); renderForm(); } }).catch(() => {});
+      // the test-mode banner is always brought up to date; the form only if nothing has been typed yet
+      loadConfig().then((res) => { const keep = !!state.dirty; const sig = applyConfig(res, keep); renderHeader(); if (!keep && sig !== cachedSig) renderForm(); }).catch(() => {});
       return;
     }
     setStatus("Connecting to the flow…", "busy");

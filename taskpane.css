@@ -71,3 +71,7 @@ details.multi .filter { margin: 6px 8px 0; }
 .addrow { display: flex; gap: 6px; margin-top: 6px; }
 .addrow input { flex: 1; }
 .recent-row { padding: 4px 0; border-bottom: 1px solid var(--panel); }
+h3 .pill { margin-left: 6px; vertical-align: 1px; }
+.confirm { background: var(--warn-bg); color: var(--warn-tx); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
+.confirm p { margin: 0; }
+.confirm .row { margin-top: 8px; }

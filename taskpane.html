@@ -22,7 +22,7 @@
     <section id="sec-setup" class="card hidden">
       <h2>One-time setup</h2>
       <p>Paste the web address of the <b>Contract Queue Intake</b> flow (Matt has it: open the flow in Power Automate, click the first step, copy the "HTTP URL").</p>
-      <input id="setup-url" type="url" placeholder="https://prod-…logic.azure.com/workflows/…">
+      <input id="setup-url" type="url" placeholder="https://default….powerplatform.com/powerautomate/…">
       <div class="row">
         <button id="setup-save" class="primary">Save and connect</button>
       </div>
@@ -81,6 +81,16 @@
     <!-- settings -->
     <section id="sec-settings" class="card hidden">
       <h2>Settings</h2>
+      <h3>Test mode <span id="tm-pill" class="pill"></span></h3>
+      <p id="tm-text" class="small"></p>
+      <div class="row"><button id="tm-toggle" class="secondary"></button></div>
+      <div id="tm-confirm" class="confirm hidden">
+        <p id="tm-question" class="small"></p>
+        <div class="row"><button id="tm-yes" class="primary"></button><button id="tm-no" class="secondary">Cancel</button></div>
+      </div>
+      <p id="tm-msg" class="small"></p>
+      <p class="muted small">One switch for everyone: it is the same switch as in the desktop app's Settings, for you and Chad.</p>
+      <h3>Connection</h3>
       <label class="field"><span>Flow address</span><input id="set-url" type="url"></label>
       <div class="row">
         <button id="set-save" class="secondary">Save</button>
