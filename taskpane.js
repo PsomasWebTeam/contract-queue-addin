@@ -14,7 +14,7 @@
 (function () {
   "use strict";
   const D = window.CQ_DEFAULTS;
-  const VERSION = "1.8";
+  const VERSION = "1.9";
   const $ = (id) => document.getElementById(id);
   const state = {
     flowUrl: "", settings: null, questions: [], email: null, values: {}, touched: {},
@@ -103,8 +103,17 @@
   const htmlWithSignature = (text) => textToHtml(text) + "\n<p>&nbsp;</p>\n" + D.signaturePaul;
   const testBanner = (to, cc) => `<p style="background:#fff3cd;border:1px solid #b8860b;padding:8px;font-family:Segoe UI,Arial,sans-serif;font-size:10pt;"><b>TEST MODE</b> &mdash; this email was rerouted to you. The real recipients would have been &mdash; To: ${esc(to.join("; ") || "—")}; Cc: ${esc(cc.join("; ") || "—")}</p>\n`;
   const uniqueAddr = (list) => { const seen = new Set(), out = []; for (const a of list) { const k = (a || "").trim().toLowerCase(); if (k && !seen.has(k)) { seen.add(k); out.push(k); } } return out; };
+  // Matt's rule (2026-10-15, agreed with Chad): both are copied on EVERY acknowledgment Paul sends to a
+  // requester, so neither processes a contract the other already took. Fixed here (and again in the
+  // flow) so it cannot be dropped in the preview or by editing the Always CC setting.
+  const ALWAYS_CC = (D.alwaysCc || ["matthew.pipes@psomas.com", "chad.wilson@psomas.com"]).map((a) => a.toLowerCase());
+  const alwaysCc = (settings) => uniqueAddr([...ALWAYS_CC, ...((settings && settings.supervisors) || [])]);
+  function finalCc(to, cc, settings) {
+    const t = uniqueAddr(to), paul = ((settings && settings.paulEmail) || "").toLowerCase();
+    return uniqueAddr([...cc, ...alwaysCc(settings)]).filter((a) => !t.includes(a) && a !== paul);
+  }
   function recipients(email, settings) {
-    const paul = (settings.paulEmail || "").toLowerCase(), sup = (settings.supervisors || []).filter(Boolean);
+    const paul = (settings.paulEmail || "").toLowerCase(), sup = alwaysCc(settings);
     if (!email || !email.senderEmail) return { to: [], cc: [] };
     const to = [email.senderEmail.toLowerCase()];
     const cc = uniqueAddr([...email.to.map((p) => p.email), ...email.cc.map((p) => p.email), ...sup]).filter((a) => !to.includes(a) && a !== paul);
@@ -403,7 +412,7 @@
     return { from: s.paulEmail, to: r.to, cc: r.cc, subject: state.email && state.email.subject ? replySubject(state.email.subject) : `Contract received: ${ph.title || "your contract"}`, text, values };
   }
   function finalize(plan, text, to, cc, subject) {
-    const s = state.settings; const realTo = uniqueAddr(to), realCc = uniqueAddr(cc).filter((a) => !realTo.includes(a));
+    const s = state.settings; const realTo = uniqueAddr(to), realCc = finalCc(realTo, cc, s);   // Matt + Chad go back in
     const body = htmlWithSignature(text);
     const out = { mode: "reply", messageId: state.email ? state.email.restId : "", internetMessageId: state.email ? state.email.internetMessageId : "", from: plan.from, to: realTo.join(";"), cc: realCc.join(";"), subject: subject.trim(), bodyHtml: body, realTo, realCc };
     if (!out.messageId) out.mode = "new";
@@ -536,6 +545,7 @@
   // --- test mode: the one shared switch (the desktop app's Settings holds the same one)
   function showPreviewPill() {
     const s = state.settings; if (s.testMode) { $("preview-pill").textContent = `TEST MODE: this will go to ${s.testRecipient} only`; show("preview-pill", true); } else show("preview-pill", false);
+    show("pv-cc-note", !s.testMode);
   }
   function renderTestMode(hideConfirm) {
     const s = state.settings || {}, on = !!s.testMode;
@@ -628,7 +638,7 @@
 
   // a few pure helpers exposed for checking from a browser console (no data, no secrets)
   window.__cq = { completionDate, businessDaysFor, isBusinessDay, spDate, spDateTime, humanDate, cleanSubject, replySubject,
-    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, planTestModeSwitch, version: VERSION };
+    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, planTestModeSwitch, finalCc, version: VERSION };
 
   Office.onReady(async () => {
     wire();

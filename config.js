@@ -168,5 +168,9 @@ window.CQ_DEFAULTS = {
   },
   "signaturePaul": "<p style=\"line-height:1.26;margin:0;\"><b><span style=\"font-family:Arial,sans-serif;font-size:12pt;color:rgb(12,51,80);\">Paul Atreides</span></b></p>\n<p style=\"line-height:1.26;margin:0 0 1.5pt 0;\"><span style=\"font-family:Arial,sans-serif;font-size:9pt;color:rgb(122,140,150);\">AI Legal Assistant to Matthew Pipes</span></p>\n<p style=\"line-height:1.26;margin:0 0 12pt 0;\"><span style=\"font-family:Arial,sans-serif;font-size:9pt;color:rgb(122,140,150);\">Office/Mobile: (714) 316-6301</span></p>\n<p style=\"line-height:1.26;margin:0;\"><a href=\"http://www.psomas.com/\" style=\"text-decoration:none;color:rgb(12,51,80);\"><b><span style=\"font-family:Arial,sans-serif;font-size:12pt;color:rgb(12,51,80);\">P S O M A S</span></b></a></p>\n<p style=\"line-height:1.26;margin:0 0 12pt 0;\"><a href=\"https://psomas.applicantpro.com/jobs/\" style=\"color:rgb(234,123,36);\"><b><span style=\"font-family:Arial,sans-serif;font-size:9pt;color:rgb(234,123,36);\">Explore a career with Psomas</span></b></a></p>\n<p style=\"margin:0;\"><span style=\"font-family:Aptos,Calibri,sans-serif;font-size:10pt;color:rgb(23,78,134);\">This message was generated and sent automatically by an AI-assisted system. Replies to this email are reviewed by a human member of the Legal Department.</span></p>",
   "prose": "font-family:Aptos,Calibri,sans-serif;font-size:11pt;color:rgb(0,0,0);margin:0 0 11pt 0;",
-  "linkStyle": "color:rgb(5,99,193);"
+  "linkStyle": "color:rgb(5,99,193);",
+  "alwaysCc": [
+    "matthew.pipes@psomas.com",
+    "chad.wilson@psomas.com"
+  ]
 };
