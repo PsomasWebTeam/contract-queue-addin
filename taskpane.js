@@ -14,11 +14,11 @@
 (function () {
   "use strict";
   const D = window.CQ_DEFAULTS;
-  const VERSION = "2.1";
+  const VERSION = "2.2";
   const $ = (id) => document.getElementById(id);
   const state = {
     flowUrl: "", settings: null, questions: [], email: null, values: {}, touched: {},
-    plan: null, busy: false, user: { name: "", email: "" }, controls: {}, recent: [],
+    plan: null, busy: false, user: { name: "", email: "" }, controls: {}, recent: [], queueMatches: [], page: "main",
   };
 
   // ------------------------------------------------------------------ dates & holidays
@@ -68,6 +68,19 @@
   const humanDateTime = (d) => `${mmddyyyy(d)} ${hhmm(d)}`;
   const spDateTime = (d) => d.toISOString().replace(/\.\d{3}Z$/, "Z");          // real instant, UTC
   const spDate = (d) => spDateTime(new Date(d.getFullYear(), d.getMonth(), d.getDate()));  // LOCAL midnight in UTC
+  // the email thread's 16-byte conversation GUID as hex — the key the list stores for "mark returned"
+  // (Outlook's conversationId is base64 whose LAST 16 bytes are the GUID; the front names the mailbox, so it
+  // differs between Matt's and Chad's copies of the same thread; mailinfo.conversation_key is the Python twin)
+  function conversationKey(raw) {
+    const s = String(raw || "").trim(); if (!s) return "";
+    if (/^[0-9a-f]{32}$/i.test(s)) return s.toLowerCase();
+    try {
+      let b64 = s.replace(/-/g, "+").replace(/_/g, "/"); b64 += "=".repeat((4 - b64.length % 4) % 4);
+      const bin = atob(b64); if (bin.length < 16) return "";
+      let hex = ""; for (let i = bin.length - 16; i < bin.length; i++) hex += bin.charCodeAt(i).toString(16).padStart(2, "0");
+      return hex;
+    } catch (e) { return ""; }
+  }
   const isoLocal = (d) => { const off = -d.getTimezoneOffset(), s = off >= 0 ? "+" : "-", a = Math.abs(off);
     return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${s}${pad(Math.floor(a / 60))}:${pad(a % 60)}`; };
 
@@ -286,7 +299,8 @@
     let restId = ""; try { restId = Office.context.mailbox.convertToRestId(item.itemId, Office.MailboxEnums.RestVersion.v2_0); } catch (e) { restId = ""; }
     return { subject: item.subject || "", senderName: item.from ? item.from.displayName || "" : "", senderEmail: item.from ? (item.from.emailAddress || "").toLowerCase() : "",
       received: item.dateTimeCreated ? new Date(item.dateTimeCreated) : null, to: (item.to || []).map(pair), cc: (item.cc || []).map(pair),
-      itemId: item.itemId || "", restId, internetMessageId: item.internetMessageId || "", conversationId: item.conversationId || "" };
+      itemId: item.itemId || "", restId, internetMessageId: item.internetMessageId || "", conversationId: item.conversationId || "",
+      conversationKey: conversationKey(item.conversationId || "") };
   }
   function emailSummary(e) {
     const who = e.senderName || e.senderEmail || "(unknown sender)"; const when = e.received ? humanDateTime(e.received) : "(date unknown)";
@@ -296,12 +310,12 @@
   // ------------------------------------------------------------------ UI plumbing
   function show(id, on) { $(id).classList.toggle("hidden", !on); }
   function setStatus(text, kind) { const el = $("status"); if (!text) { el.classList.add("hidden"); return; } el.className = "status " + (kind || ""); el.textContent = text; el.classList.remove("hidden"); }
-  function page(name) { ["sec-setup", "sec-email", "sec-form", "sec-preview", "sec-result", "sec-settings"].forEach((id) => show(id, false));
+  function page(name) { state.page = name; ["sec-setup", "sec-email", "sec-queue", "sec-form", "sec-preview", "sec-result", "sec-settings"].forEach((id) => show(id, false));
     if (name === "setup") show("sec-setup", true);
     else if (name === "settings") { show("sec-settings", true); renderSettings(); }
     else if (name === "preview") { show("sec-email", true); show("sec-preview", true); }
     else if (name === "result") { show("sec-result", true); }
-    else { show("sec-email", true); show("sec-form", true); } }
+    else { show("sec-email", true); show("sec-queue", (state.queueMatches || []).length > 0); show("sec-form", true); } }
 
   function renderHeader() {
     const s = state.settings; const pill = $("testpill");
@@ -311,11 +325,55 @@
   }
   function renderEmail() {
     const e = state.email;
-    if (!e) { $("email-summary").textContent = "Open or select an email, then press the button again."; $("email-detail").textContent = ""; show("email-pill", false); return; }
+    if (!e) { $("email-summary").textContent = "Open or select an email, then press the button again."; $("email-detail").textContent = ""; show("email-pill", false); state.queueMatches = []; renderQueue(); return; }
     $("email-summary").textContent = emailSummary(e);
     const who = [...e.to, ...e.cc].map((p) => p.email).filter(Boolean).join("; ") || "—";
     $("email-detail").textContent = `From ${e.senderEmail || "?"} · To/CC: ${who}`;
     $("email-pill").textContent = "selected in Outlook"; show("email-pill", true);
+    lookupThread();
+  }
+
+  // --- already in the queue? (v2.2) The card above the form: the open entries filed from this email's
+  // thread, each with one button that stamps Date Returned in the workbook and deletes the list row.
+  let queueLookupSeq = 0;
+  async function lookupThread() {
+    const e = state.email; state.queueMatches = []; renderQueue();
+    if (!e || !e.conversationKey || !state.flowUrl) return;
+    const seq = ++queueLookupSeq;
+    try {
+      const res = await callFlow(Object.assign(basePayloadLite("thread"), { conversationKey: e.conversationKey }), 20000);
+      if (seq !== queueLookupSeq) return;
+      state.queueMatches = Array.isArray(res.matches) ? res.matches : [];
+    } catch (err) { state.queueMatches = []; }
+    renderQueue();
+  }
+  function renderQueue() {
+    const host = $("queue-list"); host.innerHTML = "";
+    const ms = state.queueMatches || [];
+    show("sec-queue", ms.length > 0 && state.page === "main");
+    for (const m of ms) {
+      const row = document.createElement("div"); row.className = "queue-row";
+      const when = String(m.DateReviewed || "").slice(0, 10); const d = when ? fromYmd(when) : null;
+      const txt = document.createElement("div"); txt.className = "summary";
+      txt.textContent = `${m.Title || "(no title)"} · since ${d ? mmddyyyy(d) : "?"} · ${m.Assigned || "—"}`;
+      const btn = document.createElement("button"); btn.className = "primary"; btn.textContent = "Mark returned";
+      btn.addEventListener("click", () => markReturned(m, btn, txt));
+      row.appendChild(txt); row.appendChild(btn); host.appendChild(row);
+    }
+  }
+  async function markReturned(m, btn, txt) {
+    btn.disabled = true; btn.textContent = "Marking…";
+    try {
+      const res = await callFlow(Object.assign(basePayloadLite("mark-returned"), { itemId: m.Id, conversationKey: m.ConversationKey || "" }), 40000);
+      if (res && res.ok) {
+        const r = res.returned; const log = r && typeof r === "object" ? (r.ok ? ` · Date Returned written (${r.tab}, row ${r.row})` : ` · workbook: ${r.error || "not written"}`) : "";
+        txt.textContent = `✓ ${res.title || m.Title || "Returned"} — returned ${mmddyyyy(new Date())}, removed from the queue${log}`; btn.remove();
+        state.queueMatches = (state.queueMatches || []).filter((x) => x.Id !== m.Id);
+        return;
+      }
+      txt.textContent = `✗ Not marked returned: ${(res && res.error) || "the flow did not answer"}`;
+    } catch (e) { txt.textContent = `✗ Not marked returned: ${e.message}`; }
+    btn.disabled = false; btn.textContent = "Mark returned";
   }
 
   // --- the form
@@ -472,7 +530,7 @@
     }
     const payload = Object.assign(basePayload("create-item"), { fields, answers, log, emailSentVia: message ? "flow" : "none",
       email: message ? { mode: message.mode, messageId: message.messageId, internetMessageId: message.internetMessageId, from: message.from, to: message.to, cc: message.cc, subject: message.subject, bodyHtml: message.bodyHtml } : null,
-      source: state.email ? { subject: state.email.subject, from: state.email.senderEmail, fromName: state.email.senderName, receivedAt: state.email.received ? isoLocal(state.email.received) : "", internetMessageId: state.email.internetMessageId, how: "addin" } : { how: "none" } });
+      source: state.email ? { subject: state.email.subject, from: state.email.senderEmail, fromName: state.email.senderName, receivedAt: state.email.received ? isoLocal(state.email.received) : "", internetMessageId: state.email.internetMessageId, conversationKey: state.email.conversationKey || "", how: "addin" } : { how: "none" } });
     setStatus(message ? "Adding the row and sending Paul's reply… this can take up to a minute." : "Adding the row…", "busy");
     let res;
     try { res = await callFlow(payload); }
@@ -670,7 +728,7 @@
 
   // a few pure helpers exposed for checking from a browser console (no data, no secrets)
   window.__cq = { completionDate, businessDaysFor, isBusinessDay, spDate, spDateTime, humanDate, cleanSubject, replySubject,
-    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, planTestModeSwitch, finalCc, toLog, logLine, version: VERSION };
+    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, planTestModeSwitch, finalCc, toLog, logLine, conversationKey, version: VERSION };
 
   Office.onReady(async () => {
     wire();

@@ -75,3 +75,8 @@ h3 .pill { margin-left: 6px; vertical-align: 1px; }
 .confirm { background: var(--warn-bg); color: var(--warn-tx); border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
 .confirm p { margin: 0; }
 .confirm .row { margin-top: 8px; }
+
+/* v2.2: the "already in the queue" rows */
+.queue-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+.queue-row .summary { flex: 1; }
+

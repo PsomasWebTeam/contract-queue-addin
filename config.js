@@ -10,6 +10,9 @@ window.CQ_DEFAULTS = {
     "paulEmail": "paul.atreides@psomas.com",
     "logWorkbookUrl": "https://psomas.sharepoint.com/sites/GeneralCounsel/Shared%20Documents/Contracts%20Review%20Log.xlsx",
     "directReply": false,
+    "internalAddresses": [
+      "legal@psomas.com"
+    ],
     "supervisors": [
       "matthew.pipes@psomas.com",
       "chad.wilson@psomas.com"

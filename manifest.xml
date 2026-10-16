@@ -5,11 +5,11 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>f13b4dc5-1755-47f6-93c9-d75d75e5c2ff</Id>
-  <Version>1.6.0.0</Version>
+  <Version>2.0.0.0</Version>
   <ProviderName>Psomas</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Outlook Add In by Psomas"/>
-  <Description DefaultValue="Adds the selected contract email to the Contract Review Queue list and lets Paul Atreides acknowledge it with the estimated completion date."/>
+  <Description DefaultValue="Adds the selected contract email to the Contract Review Queue list, lets Paul Atreides acknowledge it with the estimated completion date, and marks the contract returned when the reviewed contract is sent back."/>
   <IconUrl DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/assets/icon-64.png"/>
   <HighResolutionIconUrl DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/assets/icon-128.png"/>
   <SupportUrl DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/"/>
@@ -33,22 +33,84 @@
       </DesktopSettings>
     </Form>
   </FormSettings>
-  <Permissions>ReadItem</Permissions>
+  <!-- ReadWriteItem (was ReadItem) since v2.2: the on-send watcher reads the reply being written and leaves a
+       small note on it ("already marked") so a second press of Send goes straight through -->
+  <Permissions>ReadWriteItem</Permissions>
   <Rule xsi:type="RuleCollection" Mode="Or">
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
   </Rule>
   <DisableEntityHighlighting>false</DisableEntityHighlighting>
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <!-- an older Outlook (before Mailbox 1.12) gets the button alone -->
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.5">
+        <bt:Set Name="Mailbox"/>
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <FunctionFile resid="Taskpane.Url"/>
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="cqGroup">
+                <Label resid="Group.Label"/>
+                <Control xsi:type="Button" id="cqOpenPane">
+                  <Label resid="Button.Label"/>
+                  <Supertip>
+                    <Title resid="Button.Label"/>
+                    <Description resid="Button.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="Taskpane.Url"/>
+                    <SupportsPinning>true</SupportsPinning>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/assets/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/assets/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/assets/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/taskpane.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Group.Label" DefaultValue="Contract Queue"/>
+        <bt:String id="Button.Label" DefaultValue="Add to Contract Queue"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Button.Tooltip" DefaultValue="Add this contract email to the Contract Review Queue and have Paul Atreides acknowledge it."/>
+      </bt:LongStrings>
+    </Resources>
     <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      <!-- Mailbox 1.12+: the button, the compose-side "Mark returned" button and the on-send watcher (Smart Alert) -->
       <Requirements>
-        <bt:Sets DefaultMinVersion="1.5">
+        <bt:Sets DefaultMinVersion="1.12">
           <bt:Set Name="Mailbox"/>
         </bt:Sets>
       </Requirements>
       <Hosts>
         <Host xsi:type="MailHost">
+          <Runtimes>
+            <Runtime resid="Commands.Url">
+              <Override type="javascript" resid="LaunchEvent.Url"/>
+            </Runtime>
+          </Runtimes>
           <DesktopFormFactor>
-            <FunctionFile resid="Taskpane.Url"/>
+            <FunctionFile resid="Commands.Url"/>
             <ExtensionPoint xsi:type="MessageReadCommandSurface">
               <OfficeTab id="TabDefault">
                 <Group id="cqGroup">
@@ -72,6 +134,34 @@
                 </Group>
               </OfficeTab>
             </ExtensionPoint>
+            <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="cqComposeGroup">
+                  <Label resid="Group.Label"/>
+                  <Control xsi:type="Button" id="cqMarkReturned">
+                    <Label resid="Returned.Label"/>
+                    <Supertip>
+                      <Title resid="Returned.Label"/>
+                      <Description resid="Returned.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16"/>
+                      <bt:Image size="32" resid="Icon.32"/>
+                      <bt:Image size="80" resid="Icon.80"/>
+                    </Icon>
+                    <Action xsi:type="ExecuteFunction">
+                      <FunctionName>cqMarkReturned</FunctionName>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+            <ExtensionPoint xsi:type="LaunchEvent">
+              <LaunchEvents>
+                <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSend" SendMode="PromptUser"/>
+              </LaunchEvents>
+              <SourceLocation resid="Commands.Url"/>
+            </ExtensionPoint>
           </DesktopFormFactor>
         </Host>
       </Hosts>
@@ -83,13 +173,17 @@
         </bt:Images>
         <bt:Urls>
           <bt:Url id="Taskpane.Url" DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/taskpane.html"/>
+          <bt:Url id="Commands.Url" DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/commands.html"/>
+          <bt:Url id="LaunchEvent.Url" DefaultValue="https://psomaswebteam.github.io/contract-queue-addin/launchevent.js"/>
         </bt:Urls>
         <bt:ShortStrings>
           <bt:String id="Group.Label" DefaultValue="Contract Queue"/>
           <bt:String id="Button.Label" DefaultValue="Add to Contract Queue"/>
+          <bt:String id="Returned.Label" DefaultValue="Mark returned"/>
         </bt:ShortStrings>
         <bt:LongStrings>
           <bt:String id="Button.Tooltip" DefaultValue="Add this contract email to the Contract Review Queue and have Paul Atreides acknowledge it."/>
+          <bt:String id="Returned.Tooltip" DefaultValue="The reviewed contract is going back: put today's date in Date Returned in the Contracts Review Log and remove the row from the queue."/>
         </bt:LongStrings>
       </Resources>
     </VersionOverrides>
