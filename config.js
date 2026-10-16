@@ -8,6 +8,9 @@ window.CQ_DEFAULTS = {
     "listTitle": "Contract Review Queue",
     "queueLink": "https://psomas.sharepoint.com/:l:/s/GeneralCounsel/JACjMuLmW_AsTYxVe2wuWiZeARZwGF9MTYy4G8uITwwe8bA?e=HRHpFw",
     "paulEmail": "paul.atreides@psomas.com",
+    "logWebAppUrl": "",
+    "logSecret": "",
+    "directReply": false,
     "supervisors": [
       "matthew.pipes@psomas.com",
       "chad.wilson@psomas.com"
@@ -38,7 +41,21 @@ window.CQ_DEFAULTS = {
       "type": "text",
       "required": true,
       "default": "emailSubject",
-      "help": "The client or other party, e.g. Trammel Crow",
+      "help": "What the contract is — starts as the email's subject",
+      "list": true,
+      "logColumn": "",
+      "fixed": ""
+    },
+    {
+      "id": "client",
+      "label": "Client",
+      "column": "",
+      "list": false,
+      "logColumn": "Client",
+      "type": "text",
+      "required": false,
+      "default": "blank",
+      "help": "For the Contracts Review Log — the client or other party, e.g. Trammel Crow",
       "fixed": ""
     },
     {
@@ -49,15 +66,19 @@ window.CQ_DEFAULTS = {
       "required": false,
       "default": "emailSender",
       "help": "Who sent the contract — filled in from the email; change it if needed",
+      "list": true,
+      "logColumn": "",
       "fixed": ""
     },
     {
       "id": "dateReceived",
       "label": "Date Received",
       "column": "DateReviewed",
+      "logColumn": "Date Received",
       "type": "datetime",
       "required": true,
       "default": "emailReceived",
+      "list": true,
       "fixed": "",
       "help": ""
     },
@@ -74,6 +95,8 @@ window.CQ_DEFAULTS = {
       "allowAdd": true,
       "default": "fixed",
       "fixed": "Standard",
+      "list": true,
+      "logColumn": "",
       "help": ""
     },
     {
@@ -83,6 +106,8 @@ window.CQ_DEFAULTS = {
       "type": "date",
       "required": true,
       "default": "byPriority",
+      "list": true,
+      "logColumn": "",
       "fixed": "",
       "help": ""
     },
@@ -90,6 +115,7 @@ window.CQ_DEFAULTS = {
       "id": "currentHandler",
       "label": "Assigned",
       "column": "Assigned",
+      "logColumn": "Reviewer",
       "type": "choice",
       "required": true,
       "options": [
@@ -99,6 +125,7 @@ window.CQ_DEFAULTS = {
       ],
       "allowAdd": true,
       "default": "currentUser",
+      "list": true,
       "fixed": "",
       "help": ""
     },
@@ -106,6 +133,7 @@ window.CQ_DEFAULTS = {
       "id": "team",
       "label": "Team",
       "column": "Team",
+      "logColumn": "Team",
       "type": "multichoice",
       "required": false,
       "options": [
@@ -143,6 +171,7 @@ window.CQ_DEFAULTS = {
       "allowAdd": true,
       "default": "blank",
       "help": "The Psomas team(s) the contract is for — pick as many as apply",
+      "list": true,
       "fixed": ""
     }
   ],

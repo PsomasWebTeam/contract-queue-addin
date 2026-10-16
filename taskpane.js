@@ -14,7 +14,7 @@
 (function () {
   "use strict";
   const D = window.CQ_DEFAULTS;
-  const VERSION = "1.9";
+  const VERSION = "2.0";
   const $ = (id) => document.getElementById(id);
   const state = {
     flowUrl: "", settings: null, questions: [], email: null, values: {}, touched: {},
@@ -146,7 +146,8 @@
   function normalizeQ(q) {
     const out = Object.assign({}, q);
     out.label = squash(out.label) || "Untitled"; out.id = out.id || out.label.replace(/\W+/g, "").toLowerCase();
-    out.type = D.typeNames[out.type] ? out.type : "text"; out.column = out.column || out.label.replace(/[^A-Za-z0-9]/g, (c) => `_x${c.charCodeAt(0).toString(16).padStart(4, "0")}_`).slice(0, 32);
+    out.type = D.typeNames[out.type] ? out.type : "text"; out.list = out.list !== false; out.logColumn = squash(out.logColumn || "");
+    out.column = out.column || (out.list ? out.label.replace(/[^A-Za-z0-9]/g, (c) => `_x${c.charCodeAt(0).toString(16).padStart(4, "0")}_`).slice(0, 32) : "");
     out.required = !!out.required; out.default = D.defaultKinds[out.default] ? out.default : "blank"; out.fixed = out.fixed || ""; out.help = out.help || "";
     if (CHOICE_TYPES.includes(out.type)) { const seen = new Set(); out.options = (out.options || []).map(squash).filter((o) => { const k = key(o); if (!k || seen.has(k)) return false; seen.add(k); return true; }); out.allowAdd = out.allowAdd !== false; if (out.store !== "text") delete out.store; } else { delete out.store; }
     return out;
@@ -199,6 +200,17 @@
       default: return String(v);
     }
   }
+  // the Contracts Review Log's values (questions.fields_for_log): dates as local ISO text — the
+  // sheet's script turns them into dates — several choices joined with '; ', the rest as displayed
+  function toLog(q, v) {
+    if (isEmpty(v)) return null;
+    switch (q.type) {
+      case "multichoice": return v.map(String).join("; ");
+      case "date": { const d = fromYmd(v); return d ? isoLocal(d) : null; }
+      case "datetime": return v instanceof Date ? isoLocal(v) : null;
+      default: return displayValue(q, v);
+    }
+  }
 
   // --- the list's real columns (apply_schema)
   const SP_TYPES = { Text: "text", Note: "note", Choice: "choice", MultiChoice: "multichoice", DateTime: "datetime", Number: "number", Currency: "number", Boolean: "yesno", URL: "text" };
@@ -221,6 +233,7 @@
     const notes = [], used = new Set(), out = [];
     for (let q of questions) {
       q = Object.assign({}, q);
+      if (q.list === false) { out.push(q); continue; }                      // lives on the form and in the log only
       const f = byI[(q.column || "").toLowerCase()] || byT[q.label.trim().toLowerCase()];
       if (!f) { notes.push(`'${q.label}' has no matching column on the list (column name ${q.column}).`); out.push(q); continue; }
       used.add(f.internal.toLowerCase());
@@ -451,9 +464,13 @@
     }
     state.busy = true; ["btn-send", "btn-send-list-only", "btn-review", "btn-list-only"].forEach((id) => { $(id).disabled = true; });
     $("btn-send").textContent = "Sending…"; $("preview-problem").textContent = "";
-    const fields = {}, answers = {};
-    for (const q of state.questions) { const v = toSharePoint(q, values[q.id]); if (v !== null) fields[q.column] = v; answers[q.label] = displayValue(q, values[q.id]); }
-    const payload = Object.assign(basePayload("create-item"), { fields, answers, emailSentVia: message ? "flow" : "none",
+    const fields = {}, answers = {}, log = {};
+    for (const q of state.questions) {
+      if (q.list !== false && q.column) { const v = toSharePoint(q, values[q.id]); if (v !== null) fields[q.column] = v; }
+      answers[q.label] = displayValue(q, values[q.id]);
+      if (q.logColumn) { const lv = toLog(q, values[q.id]); if (lv !== null) log[q.logColumn] = lv; }   // the Contracts Review Log's row
+    }
+    const payload = Object.assign(basePayload("create-item"), { fields, answers, log, emailSentVia: message ? "flow" : "none",
       email: message ? { mode: message.mode, messageId: message.messageId, internetMessageId: message.internetMessageId, from: message.from, to: message.to, cc: message.cc, subject: message.subject, bodyHtml: message.bodyHtml } : null,
       source: state.email ? { subject: state.email.subject, from: state.email.senderEmail, fromName: state.email.senderName, receivedAt: state.email.received ? isoLocal(state.email.received) : "", internetMessageId: state.email.internetMessageId, how: "addin" } : { how: "none" } });
     setStatus(message ? "Adding the row and sending Paul's reply… this can take up to a minute." : "Adding the row…", "busy");
@@ -468,9 +485,11 @@
     const sent = res.emailSent || (message ? "pending" : "none");
     const emailErrors = Array.isArray(res.emailErrors) ? res.emailErrors.filter(Boolean).map(String) : [];
     $("res-email").textContent = emailLine(message, sent, emailErrors, s);
+    const logState = Object.keys(payload.log).length ? (res.log || "none") : null;
+    $("res-log").textContent = logLine(logState, s); show("res-log", !!$("res-log").textContent);
     const openBtn = $("res-open"); if (itemId) { openBtn.href = `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(payload.listTitle)}/DispForm.aspx?ID=${itemId}`; show("res-open", true); } else show("res-open", false);
     remember({ when: humanDateTime(new Date()), title: answers.Title || "", itemId, list: payload.listTitle, email: sent, to: message ? message.to : "" });
-    if (message && sent === "pending") pollStatus(payload.id, message, itemId, s);
+    if ((message && sent === "pending") || logState === "pending") pollStatus(payload.id, message, itemId, s, logState === "pending");
     page("result");
     ["btn-send", "btn-send-list-only", "btn-review", "btn-list-only"].forEach((id) => { $(id).disabled = false; }); $("btn-send").textContent = "Send Paul's email and add to the list";
   }
@@ -484,19 +503,32 @@
     if (sent === "new") return `✓ Paul's mailbox sent a new email to ${message.to}${test}.`;
     return `Paul's email: ${sent}.`;
   }
+  // the Contracts Review Log (the shared Google Sheet): what the flow's answer or receipt says about it
+  function logLine(r, s) {
+    if (r === null || r === undefined) return "";
+    if (r === "pending") return "… Logging to the Contracts Review Log — this line updates by itself.";
+    if (r === "none" || r === "") return (s && s.logWebAppUrl) ? "" : "– Not logged: the Contracts Review Log isn't connected yet (desktop app → Settings → The Contracts Review Log).";
+    if (typeof r === "object") return r.ok ? `✓ Logged in the Contracts Review Log${r.tab ? ` (${r.tab}, row ${r.row})` : ""}.` : `✗ NOT logged in the Contracts Review Log: ${r.error || "no reason given"} — add the row to the sheet by hand.`;
+    return `Contracts Review Log: ${r}`;
+  }
   // the flow answers before Paul's email goes; it leaves a receipt when it has — ask for it
-  async function pollStatus(lookup, message, itemId, s) {
+  async function pollStatus(lookup, message, itemId, s, wantLog) {
     const until = Date.now() + 150000; let delay = 4000;
     while (Date.now() < until) {
       await new Promise((r) => setTimeout(r, delay)); delay = Math.min(delay + 1000, 8000);
       let data; try { data = await callFlow(Object.assign(basePayloadLite("status"), { lookup }), 20000); } catch (e) { continue; }
       if (data.status !== "done" || !data.receipt) continue;
-      const rc = data.receipt; const sent = rc.emailSent || "none"; const errors = Array.isArray(rc.emailErrors) ? rc.emailErrors.filter(Boolean).map(String) : [];
-      $("res-email").textContent = emailLine(message, sent, errors, s);
-      const list = (state.recent || []).map((r) => (itemId && r.itemId === itemId ? Object.assign({}, r, { email: sent }) : r)); state.recent = list; roam("recent", JSON.stringify(list));
+      const rc = data.receipt;
+      if (message) {
+        const sent = rc.emailSent || "none"; const errors = Array.isArray(rc.emailErrors) ? rc.emailErrors.filter(Boolean).map(String) : [];
+        $("res-email").textContent = emailLine(message, sent, errors, s);
+        const list = (state.recent || []).map((r) => (itemId && r.itemId === itemId ? Object.assign({}, r, { email: sent }) : r)); state.recent = list; roam("recent", JSON.stringify(list));
+      }
+      if (wantLog) { $("res-log").textContent = logLine(rc.log || "none", s); show("res-log", !!$("res-log").textContent); }
       return;
     }
-    if ($("res-email").textContent.startsWith("…")) $("res-email").textContent = "Paul's reply has not been confirmed yet — check the Sent Items of Paul's mailbox or the flow's run history.";
+    if (message && $("res-email").textContent.startsWith("…")) $("res-email").textContent = "Paul's reply has not been confirmed yet — check the Sent Items of Paul's mailbox or the flow's run history.";
+    if (wantLog && $("res-log").textContent.startsWith("…")) $("res-log").textContent = "The Contracts Review Log entry has not been confirmed yet — check the flow's run history.";
   }
 
   // --- shared edits through the flow
@@ -638,7 +670,7 @@
 
   // a few pure helpers exposed for checking from a browser console (no data, no secrets)
   window.__cq = { completionDate, businessDaysFor, isBusinessDay, spDate, spDateTime, humanDate, cleanSubject, replySubject,
-    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, planTestModeSwitch, finalCc, version: VERSION };
+    firstName, textToHtml, shortError, recipients, applySchema, normalizeQ, mmddyyyy, planTestModeSwitch, finalCc, toLog, logLine, version: VERSION };
 
   Office.onReady(async () => {
     wire();
