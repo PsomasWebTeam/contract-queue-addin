@@ -468,7 +468,7 @@
     for (const q of state.questions) {
       if (q.list !== false && q.column) { const v = toSharePoint(q, values[q.id]); if (v !== null) fields[q.column] = v; }
       answers[q.label] = displayValue(q, values[q.id]);
-      if (q.logColumn) { const lv = toLog(q, values[q.id]); if (lv !== null) log[q.logColumn] = lv; }   // the Contracts Review Log's row
+      if (q.logColumn && s.logWebAppUrl) { const lv = toLog(q, values[q.id]); if (lv !== null) log[q.logColumn] = lv; }   // the Contracts Review Log's row (only when connected)
     }
     const payload = Object.assign(basePayload("create-item"), { fields, answers, log, emailSentVia: message ? "flow" : "none",
       email: message ? { mode: message.mode, messageId: message.messageId, internetMessageId: message.internetMessageId, from: message.from, to: message.to, cc: message.cc, subject: message.subject, bodyHtml: message.bodyHtml } : null,
@@ -485,7 +485,7 @@
     const sent = res.emailSent || (message ? "pending" : "none");
     const emailErrors = Array.isArray(res.emailErrors) ? res.emailErrors.filter(Boolean).map(String) : [];
     $("res-email").textContent = emailLine(message, sent, emailErrors, s);
-    const logState = Object.keys(payload.log).length ? (res.log || "none") : null;
+    const logState = Object.keys(payload.log).length ? (res.log || "none") : (state.questions.some((q) => q.logColumn) && !s.logWebAppUrl ? "none" : null);
     $("res-log").textContent = logLine(logState, s); show("res-log", !!$("res-log").textContent);
     const openBtn = $("res-open"); if (itemId) { openBtn.href = `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(payload.listTitle)}/DispForm.aspx?ID=${itemId}`; show("res-open", true); } else show("res-open", false);
     remember({ when: humanDateTime(new Date()), title: answers.Title || "", itemId, list: payload.listTitle, email: sent, to: message ? message.to : "" });
