@@ -14,7 +14,7 @@
 (function () {
   "use strict";
   const D = window.CQ_DEFAULTS;
-  const VERSION = "2.0";
+  const VERSION = "2.1";
   const $ = (id) => document.getElementById(id);
   const state = {
     flowUrl: "", settings: null, questions: [], email: null, values: {}, touched: {},
@@ -201,7 +201,7 @@
     }
   }
   // the Contracts Review Log's values (questions.fields_for_log): dates as local ISO text — the
-  // sheet's script turns them into dates — several choices joined with '; ', the rest as displayed
+  // workbook's script turns them into dates — several choices joined with '; ', the rest as displayed
   function toLog(q, v) {
     if (isEmpty(v)) return null;
     switch (q.type) {
@@ -468,7 +468,7 @@
     for (const q of state.questions) {
       if (q.list !== false && q.column) { const v = toSharePoint(q, values[q.id]); if (v !== null) fields[q.column] = v; }
       answers[q.label] = displayValue(q, values[q.id]);
-      if (q.logColumn && s.logWebAppUrl) { const lv = toLog(q, values[q.id]); if (lv !== null) log[q.logColumn] = lv; }   // the Contracts Review Log's row (only when connected)
+      if (q.logColumn) { const lv = toLog(q, values[q.id]); if (lv !== null) log[q.logColumn] = lv; }   // the Contracts Review Log's row
     }
     const payload = Object.assign(basePayload("create-item"), { fields, answers, log, emailSentVia: message ? "flow" : "none",
       email: message ? { mode: message.mode, messageId: message.messageId, internetMessageId: message.internetMessageId, from: message.from, to: message.to, cc: message.cc, subject: message.subject, bodyHtml: message.bodyHtml } : null,
@@ -485,7 +485,7 @@
     const sent = res.emailSent || (message ? "pending" : "none");
     const emailErrors = Array.isArray(res.emailErrors) ? res.emailErrors.filter(Boolean).map(String) : [];
     $("res-email").textContent = emailLine(message, sent, emailErrors, s);
-    const logState = Object.keys(payload.log).length ? (res.log || "none") : (state.questions.some((q) => q.logColumn) && !s.logWebAppUrl ? "none" : null);
+    const logState = Object.keys(payload.log).length ? (res.log || "none") : null;
     $("res-log").textContent = logLine(logState, s); show("res-log", !!$("res-log").textContent);
     const openBtn = $("res-open"); if (itemId) { openBtn.href = `${(s.siteUrl || "").replace(/\/$/, "")}/Lists/${encodeURIComponent(payload.listTitle)}/DispForm.aspx?ID=${itemId}`; show("res-open", true); } else show("res-open", false);
     remember({ when: humanDateTime(new Date()), title: answers.Title || "", itemId, list: payload.listTitle, email: sent, to: message ? message.to : "" });
@@ -503,12 +503,12 @@
     if (sent === "new") return `✓ Paul's mailbox sent a new email to ${message.to}${test}.`;
     return `Paul's email: ${sent}.`;
   }
-  // the Contracts Review Log (the shared Google Sheet): what the flow's answer or receipt says about it
+  // the Contracts Review Log (the Excel workbook on the General Counsel site): what the flow's answer or receipt says about it
   function logLine(r, s) {
     if (r === null || r === undefined) return "";
     if (r === "pending") return "… Logging to the Contracts Review Log — this line updates by itself.";
-    if (r === "none" || r === "") return (s && s.logWebAppUrl) ? "" : "– Not logged: the Contracts Review Log isn't connected yet (desktop app → Settings → The Contracts Review Log).";
-    if (typeof r === "object") return r.ok ? `✓ Logged in the Contracts Review Log${r.tab ? ` (${r.tab}, row ${r.row})` : ""}.` : `✗ NOT logged in the Contracts Review Log: ${r.error || "no reason given"} — add the row to the sheet by hand.`;
+    if (r === "none" || r === "") return "";
+    if (typeof r === "object") return r.ok ? `✓ Logged in the Contracts Review Log${r.tab ? ` (${r.tab}, row ${r.row})` : ""}.` : `✗ NOT logged in the Contracts Review Log: ${r.error || "no reason given"} — add the row to the workbook by hand.`;
     return `Contracts Review Log: ${r}`;
   }
   // the flow answers before Paul's email goes; it leaves a receipt when it has — ask for it

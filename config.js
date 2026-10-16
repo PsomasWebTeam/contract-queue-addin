@@ -8,8 +8,7 @@ window.CQ_DEFAULTS = {
     "listTitle": "Contract Review Queue",
     "queueLink": "https://psomas.sharepoint.com/:l:/s/GeneralCounsel/JACjMuLmW_AsTYxVe2wuWiZeARZwGF9MTYy4G8uITwwe8bA?e=HRHpFw",
     "paulEmail": "paul.atreides@psomas.com",
-    "logWebAppUrl": "",
-    "logSecret": "",
+    "logWorkbookUrl": "https://psomas.sharepoint.com/sites/GeneralCounsel/Shared%20Documents/Contracts%20Review%20Log.xlsx",
     "directReply": false,
     "supervisors": [
       "matthew.pipes@psomas.com",
