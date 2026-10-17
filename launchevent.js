@@ -21,11 +21,32 @@
     var list = LEGAL.concat(s.supervisors || [], [s.paulEmail || ""], s.internalAddresses || []);
     return list.map(function (a) { return String(a || "").trim().toLowerCase(); }).filter(Boolean);
   }
+  function pad2(n) { n = String(n); return n.length < 2 ? "0" + n : n; }
   function isoLocal(d) {
-    var off = -d.getTimezoneOffset(), sign = off >= 0 ? "+" : "-", a = Math.abs(off), p = function (n) { return String(n).padStart(2, "0"); };
+    var off = -d.getTimezoneOffset(), sign = off >= 0 ? "+" : "-", a = Math.abs(off), p = pad2;
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) + sign + p(Math.floor(a / 60)) + ":" + p(a % 60);
   }
-  function stamp() { var d = new Date(), p = function (n) { return String(n).padStart(2, "0"); }; return "" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()); }
+  function stamp() { var d = new Date(), p = pad2; return "" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()); }
+  /* Every Office callback is bounded: if it has not answered after `ms`, the promise settles with `fallback`.
+     (Classic Outlook shows "… is working on your request" until event.completed() — a callback that never
+     fires must not hold that bar forever.) */
+  function bounded(promise, ms, fallback) {
+    return new Promise(function (res) {
+      var t = setTimeout(function () { res(fallback); }, ms);
+      promise.then(function (v) { clearTimeout(t); res(v); }, function () { clearTimeout(t); res(fallback); });
+    });
+  }
+  var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  function b64bytes(str) {        // base64 → array of byte values (no atob: the JS-only runtime has no DOM globals)
+    var out = [], buf = 0, bits = 0;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charAt(i); if (c === "=") break;
+      var v = B64.indexOf(c); if (v < 0) continue;
+      buf = (buf << 6) | v; bits += 6;
+      if (bits >= 8) { bits -= 8; out.push((buf >> bits) & 255); }
+    }
+    return out;
+  }
   function rand(n) { var s = ""; while (s.length < n) s += Math.random().toString(36).slice(2); return s.slice(0, n); }
 
   /* The 16-byte conversation GUID as hex, from Outlook's conversationId (EWS/Graph base64 — the GUID is
@@ -34,19 +55,23 @@
     var s = String(raw || "").trim(); if (!s) return "";
     if (/^[0-9a-f]{32}$/i.test(s)) return s.toLowerCase();
     try {
-      var b64 = s.replace(/-/g, "+").replace(/_/g, "/"); b64 += "=".repeat((4 - b64.length % 4) % 4);
-      var bin = atob(b64); if (bin.length < 16) return "";
-      var hex = ""; for (var i = bin.length - 16; i < bin.length; i++) hex += bin.charCodeAt(i).toString(16).padStart(2, "0");
+      var bytes = b64bytes(s.replace(/-/g, "+").replace(/_/g, "/")); if (bytes.length < 16) return "";
+      var hex = ""; for (var i = bytes.length - 16; i < bytes.length; i++) hex += pad2(bytes[i].toString(16));
       return hex;
     } catch (e) { return ""; }
   }
 
   function callFlow(url, payload, timeoutMs) {
+    var ms = timeoutMs || 20000;
     var ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    var timer = ctl ? setTimeout(function () { ctl.abort(); }, timeoutMs || 20000) : null;
-    return fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(payload), signal: ctl ? ctl.signal : undefined })
-      .then(function (r) { return r.text().then(function (t) { var j = {}; try { j = JSON.parse(t); } catch (e) { j = { ok: false, error: "The flow answered oddly (" + r.status + ")." }; } if (!r.ok && !j.error) j.error = "The flow answered " + r.status + "."; return j; }); })
-      .finally(function () { if (timer) clearTimeout(timer); });
+    var opts = { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(payload) };
+    if (ctl) opts.signal = ctl.signal;
+    var request = fetch(url, opts).then(function (r) {
+      return r.text().then(function (t) { var j = {}; try { j = JSON.parse(t); } catch (e) { j = { ok: false, error: "The flow answered oddly (" + r.status + ")." }; } if (!r.ok && !j.error) j.error = "The flow answered " + r.status + "."; return j; });
+    });
+    var timer = null;
+    var clock = new Promise(function (res) { timer = setTimeout(function () { if (ctl) { try { ctl.abort(); } catch (e) { /* nothing */ } } res({ ok: false, error: "the flow did not answer within " + Math.round(ms / 1000) + " s" }); }, ms); });
+    return Promise.race([request, clock]).then(function (v) { clearTimeout(timer); return v; }, function (e) { clearTimeout(timer); return { ok: false, error: (e && e.message) ? e.message : "the flow could not be reached" }; });
   }
   function lite(kind, s) {
     var me = ""; try { me = (Office.context.mailbox.userProfile.emailAddress || "").toLowerCase(); } catch (e) { me = ""; }
@@ -54,10 +79,10 @@
   }
 
   // Office.js callbacks → promises
-  function recipients(field) { return new Promise(function (res) { try { field.getAsync(function (r) { res(r.status === Office.AsyncResultStatus.Succeeded ? (r.value || []).map(function (p) { return (p.emailAddress || "").toLowerCase(); }).filter(Boolean) : []); }); } catch (e) { res([]); } }); }
-  function attachments(item) { return new Promise(function (res) { try { item.getAttachmentsAsync(function (r) { res(r.status === Office.AsyncResultStatus.Succeeded ? (r.value || []).filter(function (a) { return !a.isInline; }) : []); }); } catch (e) { res([]); } }); }
-  function customProps(item) { return new Promise(function (res) { try { item.loadCustomPropertiesAsync(function (r) { res(r.status === Office.AsyncResultStatus.Succeeded ? r.value : null); }); } catch (e) { res(null); } }); }
-  function saveProps(props) { return new Promise(function (res) { try { props.saveAsync(function () { res(); }); } catch (e) { res(); } }); }
+  function recipients(field) { return bounded(new Promise(function (res) { try { field.getAsync(function (r) { res(r.status === Office.AsyncResultStatus.Succeeded ? (r.value || []).map(function (p) { return (p.emailAddress || "").toLowerCase(); }).filter(Boolean) : []); }); } catch (e) { res([]); } }), 6000, []); }
+  function attachments(item) { return bounded(new Promise(function (res) { try { item.getAttachmentsAsync(function (r) { res(r.status === Office.AsyncResultStatus.Succeeded ? (r.value || []).filter(function (a) { return !a.isInline; }) : []); }); } catch (e) { res([]); } }), 6000, []); }
+  function customProps(item) { return bounded(new Promise(function (res) { try { item.loadCustomPropertiesAsync(function (r) { res(r.status === Office.AsyncResultStatus.Succeeded ? r.value : null); }); } catch (e) { res(null); } }), 6000, null); }
+  function saveProps(props) { return bounded(new Promise(function (res) { try { props.saveAsync(function () { res(true); }); } catch (e) { res(false); } }), 6000, false); }
   function notify(item, key, message, isError) {
     try {
       item.notificationMessages.replaceAsync(key, isError ? { type: "errorMessage", message: String(message).slice(0, 150) }
@@ -74,7 +99,7 @@
       var legal = legalAddresses(s);
       var outside = parts[0].concat(parts[1]).filter(function (a) { return legal.indexOf(a) < 0; });
       if (!outside.length || !parts[2].length) return null;
-      return callFlow(url, Object.assign(lite("thread", s), { conversationKey: key }), 20000).then(function (res) {
+      return callFlow(url, Object.assign(lite("thread", s), { conversationKey: key }), 12000).then(function (res) {
         var m = (res && res.matches) || [];
         return m.length ? { match: m[0], outside: outside, key: key } : null;
       });
@@ -86,11 +111,15 @@
     var item = Office.context.mailbox.item;
     var url = roam("flowUrl");
     var s = settings();
-    var allow = function () { event.completed({ allowEvent: true }); };
+    var finished = false;
+    var complete = function (opts) { if (finished) return; finished = true; clearTimeout(watchdog); try { event.completed(opts); } catch (e) { /* nothing */ } };
+    var allow = function () { complete({ allowEvent: true }); };
+    var watchdog = setTimeout(allow, 25000);          // our own trouble never holds an email back
     if (!url || !item) return allow();
     customProps(item).then(function (props) {
       if (props && props.get(SKIP)) { props.remove(SKIP); return saveProps(props).then(allow); }   // already decided for this email
       return openEntryFor(item, s, url).then(function (found) {
+        if (finished) return;
         if (!found) return allow();
         var m = found.match;
         var cut = function (t, n) { t = String(t || ""); return t.length > n ? t.slice(0, n - 1) + "\u2026" : t; };
@@ -108,9 +137,9 @@
           opts.errorMessage = text + "\n\n(No second button in this Outlook: use the add-in's Mark returned button, then send.)";
         }
         opts.errorMessage = opts.errorMessage.slice(0, 500);
-        event.completed(opts);
+        complete(opts);
       });
-    }).catch(function () { allow(); });   // never hold an email back because of our own trouble
+    }).catch(function () { allow(); });
   }
 
   /* The Smart Alert's contextData: on the event itself, else through getInitializationContextAsync (the
@@ -120,10 +149,10 @@
     var parse = function (v) { if (!v) return null; if (typeof v === "object") return v; try { return JSON.parse(v) || null; } catch (e) { return null; } };
     var direct = parse(event && event.contextData);
     if (direct) return Promise.resolve(direct);
-    return new Promise(function (res) {
+    return bounded(new Promise(function (res) {
       try { item.getInitializationContextAsync(function (r) { res((r.status === Office.AsyncResultStatus.Succeeded && parse(r.value)) || {}); }); }
       catch (e) { res({}); }
-    });
+    }), 4000, {});
   }
 
   // --- "Mark returned & send" (also the compose-ribbon button "Mark returned") ---------------
@@ -131,8 +160,13 @@
     var item = Office.context.mailbox.item;
     var url = roam("flowUrl");
     var s = settings();
-    var done = function () { try { event.completed(); } catch (e) { /* nothing */ } };
+    var finished = false;
+    var done = function () { if (finished) return; finished = true; clearTimeout(watchdog); try { event.completed(); } catch (e) { /* nothing */ } };
+    var watchdog = setTimeout(function () {         // whatever stalled, the command ends within a minute
+      notify(item, "cq", "Mark returned took too long here — use the task pane's Mark returned button.", true); done();
+    }, 60000);
     if (!url || !item) { notify(item, "cq", "The add-in is not connected to the flow yet — open the task pane once.", true); return done(); }
+    notify(item, "cq", "Marking the contract returned\u2026", false);
     contextOf(event, item).then(function (ctx) {
       var key = ctx.key || conversationKey(item.conversationId);
       var payload = Object.assign(lite("mark-returned", s), { itemId: ctx.itemId || 0, conversationKey: key || "" });

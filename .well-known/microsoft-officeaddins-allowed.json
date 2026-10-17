@@ -1,0 +1,7 @@
+{
+  "allowed": [
+    "https://psomaswebteam.github.io/contract-queue-addin/launchevent.js",
+    "https://psomaswebteam.github.io/contract-queue-addin/commands.html",
+    "https://psomaswebteam.github.io/contract-queue-addin/taskpane.html"
+  ]
+}
